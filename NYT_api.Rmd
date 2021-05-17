@@ -1,0 +1,149 @@
+---
+title: "NYT_api"
+output: github_document
+---
+
+The following document details how article data were pulled from the New York Time's API
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+# loading the packages:
+library(dplyr) # for pipes and the data_frame function
+library(rvest) # webscraping
+library(stringr) # to deal with strings and to clean up our data
+library(rvest)
+library(tidyverse)
+library(RJSONIO)
+library (RCurl)
+library(tidyr)
+library(jsonlite)
+library(base)
+```
+#### Scrapping news articles on the Guardian using API
+details: 
+scrapping news articles on the NYT using API
+https://rpubs.com/hmgeiger/373949
+scrapeNYT_API2.R
+```{r}
+NYTIMES_KEY <- "WxYCzBVsF6ISGQ1ZxWPLvaRfPfC11qhF"
+
+#term <- "Rohingya+refugee"
+term <- "Rohingya"
+begin_date <- "20100101"
+end_date <- "20210101"
+
+baseurl <- paste0("http://api.nytimes.com/svc/search/v2/articlesearch.json?q=",term,
+                  "&begin_date=",begin_date,"&end_date=",end_date,
+                  "&facet_filter=true&api-key=",NYTIMES_KEY, sep="")
+
+initialQuery <- fromJSON(baseurl)
+maxPages <- round((initialQuery$response$meta$hits[1] / 10)-1) 
+
+pages_rohingya <- vector("list",length=maxPages)
+
+for(i in 0:maxPages){
+    nytSearch <- fromJSON(paste0(baseurl, "&page=", i), flatten = TRUE) %>% data.frame() 
+    pages_rohingya[[i+1]] <- nytSearch 
+    Sys.sleep(5) #I was getting errors more often when I waited only 1 second between calls. 5 seconds seems to work better.
+}
+
+nyt_rohingya <- rbind_pages(pages_rohingya) %>%
+      janitor::clean_names()
+save(nyt_rohingya,file="rohingya_news.Rdata")
+```
+Minor details:
+- A search of articles from 2010/01/01 to 2021/01/01, "Rohingya" resulted in 1050 total articles.
+- A search of articles from the same time frame, "Rohingya Refugee" produced 537 articles 
+we will use Rohingya as the term to be inclusive and later apply exclusion criteria. 
+
+### Exploring and cleaning data frames
+Exploring and cleaning data frames
+- keep only relevant columns
+
+```{r message=FALSE, warning=FALSE}
+colnames(nyt_rohingya)
+colnames(nyt_rohingya) <- str_replace(colnames(nyt_rohingya),
+                pattern='response_docs_',replace='')
+colnames(nyt_rohingya) <- str_replace(colnames(nyt_rohingya),
+                pattern='response_meta_',replace='')
+colnames(nyt_rohingya)
+#keep relevant columns;
+col_keep <- c("abstract", "web_url", "snippet", "keywords", "pub_date", "section_name", "headline_main")
+nyt_rohingya_sub <-nyt_rohingya[col_keep]
+```
+The results show a total of 1050 articles that were published between 01/01/2010 to 01/01/2021, ordered by date. 
+
+
+#### Deleting irrelevant and duplicated articles
+Based on the category column of the dataset, we can include just the News articles and delete others (opinions, arts ,lifestyle, sports). This resulted in a total 817 articles. 
+
+Our resulting sample includes 493 articles from The New York Times
+```{r}
+nyt_rohingya_sub =
+  rename(nyt_rohingya_sub,
+    date= pub_date,
+    title= headline_main)
+
+unique(nyt_rohingya_sub[c("section_name")])
+
+#excluding non-news materials resulted in 488
+nyt_rohingya_news <-
+  nyt_rohingya_sub %>%
+  filter(section_name == "World"|
+         section_name == "New York"|
+         section_name == "Business Day"|
+         section_name == "Multimedia/Photos"|
+         section_name == "U.S."|
+         section_name == "Technology"|
+        section_name == "podcasts")
+
+nyt_rohingya_news[duplicated(nyt_rohingya_news$title),]
+#11 duplicated articles, but after reviewing title and snippet, there was only one duplicate article
+#removing the one duplicate article
+nyt_rohingya_news =
+  nyt_rohingya_news[-c(193),] 
+save(nyt_rohingya_news,file="rohingya_news.Rdata")
+```
+Excluding non-news materials resulted in 488
+
+deleting opinions, travel, blogs, corrections, education, daily briefings (NYT Now), Times Topics, Magazine, Sunday reviews, briefings, Times Insider, The Learning Network, Today's paper, corrections, question of the day, book reviews, obituaries, reader center, lens, climate, arts, movies, style, science. 
+Removing one duplicate article resulted in 487.
+
+#### sort by acending date and count publications per month/year.
+
+```{r message=FALSE, warning=FALSE}
+library(lubridate)
+#arrange by date
+nyt_rohingya_news$date <- as.Date(substr(nyt_rohingya_news$date,1,10))
+nyt_rohingya_news <- 
+  nyt_rohingya_news%>% 
+  arrange(date)
+
+#counting publications per day
+nyt_rohingya_count <-
+nyt_rohingya_news %>%
+  group_by(date) %>%
+  count(name="nyt_pub_count")
+save(nyt_rohingya_count,file="rohingya_news.Rdata")
+```
+
+```{r}
+#graphing monthly pub
+library(ggplot2)
+library(plotly)
+p3 <- ggplot(nyt_rohingya_month, aes(month, pub_count))+geom_line() + xlab("date")
+p4 <- ggplot(nyt_rohingya_bi, aes(month, pub_count))+geom_line() + xlab("date")
+p5 <- ggplot(nyt_rohingya_yr, aes(month, pub_count))+geom_line() + xlab("date")
+
+p3 = p3 + scale_x_date(date_breaks = "6 months") +
+ theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=0.5))
+
+p4 = p4 + scale_x_date(date_breaks = "1 year") +
+ theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1))
+p5 = p5 + scale_x_date(date_breaks = "6 months") +
+ theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=0.5))
+
+ggplotly(p5, tex)
+
+```
+``` {r plotting}

@@ -1,0 +1,213 @@
+---
+title: "Figures and Tables: Trends in media coverage and forced migration of the Rohingya community"
+output: github_document
+editor_options: 
+  chunk_output_type: inline
+author: Michelle Lee
+---
+The following document shows the timeline comparing the publication rate of NYT and the Guardian.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(patchwork)
+library(readr)
+library(broom)
+library(dbplyr)
+library(viridis)
+library(reshape2)
+library(plotly)
+library(lubridate)
+library(janitor)
+
+knitr::opts_chunk$set(
+	echo = TRUE,
+	warning = FALSE,
+	fig.width = 8, 
+  fig.height = 6,
+  out.width = "90%"
+)
+
+options(
+  ggplot2.continuous.colour = "viridis",
+  ggplot2.continuous.fill = "viridis"
+)
+
+scale_colour_discrete = scale_colour_viridis_d
+scale_fill_discrete = scale_fill_viridis_d
+
+theme_set(theme_minimal() + theme(legend.position = "bottom"))
+load("~/Desktop/capstone/capstone/rohingya_news.Rdata")
+```
+Yearly and monthly publications graph
+
+```{r message=FALSE, warning=FALSE}
+library(lubridate)
+
+#yearly publications 
+yr_articles <-
+  full_join(guardian_rohingya_yr,nyt_rohingya_yr,population_date, by = "year") %>%
+  arrange(year) 
+
+yr_articles2 <-
+yr_articles %>%
+    rename(
+    "New York Times" = nyt_pub_count,
+    "The Guardian" = g_pub_count,
+  ) %>%
+melt(., id.vars = "year")
+
+plot_year<-
+  full_join( population_date, yr_articles, by = "year")%>%
+  arrange(year)
+
+plot_year2<-
+  full_join( population_date, yr_articles2, by = "year")%>%
+  arrange(year)
+
+
+#change NAs to 0s 
+plot_year[is.na(plot_year)] <- 0
+
+#save(nyt_rohingya_count,file="rohingya_news.Rdata")
+```
+
+Table 1
+```{r message=FALSE, warning=FALSE}
+#making a Table 1
+library(sjPlot)
+library(stargazer)
+plot_year_table <-
+  plot_year %>%
+  separate(year, into = c("year", "month", "day"))%>%
+  mutate(year = as.numeric(year)) %>%
+  select(-c(month, day)) %>%
+  adorn_totals("row")
+ 
+plot_year_table <-
+  plot_year_table %>%
+  mutate(ref_pct_chng  = round((refugees/lag(refugees) - 1) * 100, digits= 2),
+nyt_pct_chng  = round((nyt_pub_count/lag(nyt_pub_count) - 1) * 100, 2),
+g_pct_chng  = round((g_pub_count/lag(g_pub_count) - 1) * 100,2)) %>% 
+    rename(
+    "New York Times" = nyt_pub_count,
+    "The Guardian" = g_pub_count,
+    "Refugees" = refugees,
+    "Refugees Change (%)" = ref_pct_chng,
+    "NYT Change (%)" = nyt_pct_chng,
+    "The Guardian Change(%)" = g_pct_chng
+  )
+plot_year_table <- plot_year_table[,c(1,2,5,3,6,4,7)]
+
+tab_df(plot_year_table, 
+       alternate.rows = TRUE,
+       title= "Table 1. # of Article Frequency and Rohingya Refugee by Year", 
+       file="table1.doc")
+
+```
+
+Bar Chart
+```{r}
+#creating a bar chart 
+plot_year3 <-
+  plot_year2 %>%
+  group_by(year) %>%
+  arrange(year, desc(variable)) %>%
+  mutate(lab_ypos = cumsum(value)-0.5*value)
+p_bar <-
+  ggplot(plot_year3, aes(x=year, y= value, fill=variable))+
+  geom_bar(stat="identity")+
+  scale_fill_manual(values=c("grey",'#E69F00'))+
+  geom_text(aes(y=lab_ypos, label = value, group=variable), color = "black", size=3)+
+  coord_cartesian(ylim=c(0,1000))
+p_bar
+
+  scale_y_continuous(name = "Frequency of Articles", limits=c(0,1000))
+
+```
+```{r}
+#graphing monthly pub
+library(ggplot2)
+library(reshape2)
+library(scales)
+library(patchwork) # To display 2 charts together
+library(hrbrthemes)
+
+# original plotting on the same graph
+coeff <- 1000
+p_yr2 <-
+  p_bar+
+  geom_line(aes(y=refugees/coeff, color = "Rohingya Refugees")) +
+  scale_y_continuous(name = "Frequency of Articles", sec.axis = sec_axis(~.*1000, name = 'Number of refugees')) +
+   theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=0.5)) + 
+  ggtitle("Figure 1: Frequency of News Articles, Number of Rohingya Refugees") +
+  scale_x_date(date_breaks = "year",labels = date_format("%Y"), name = "Year") +
+  geom_vline(aes(xintercept=as.numeric(as.Date("2015-01-01")),
+                 color="2015 Rohingya Refugee Crisis"), linetype=4,size=0.2) +
+    geom_vline(aes(xintercept=as.numeric(as.Date("2017-01-01")),
+                 color="Kofi Annan Report"), linetype=4,size=0.4) +
+    geom_vline(aes(xintercept=as.numeric(as.Date("2018-01-01")),
+                 color="UN Fact Finding Mission"), linetype=4,size=0.2) +
+      scale_color_manual(values=c('dark red','green','dodgerblue','#999999'))+
+  theme(legend.title = element_text(size = 7), 
+               legend.text = element_text(size = 7)) +
+  guides(fill=guide_legend(nrow=2,byrow=TRUE))
+p_yr2
+
+ggplotly(p_yr2)
+ggsave("figure1.jpeg", plot=p_yr2)
+
+```
+```{r}
+#graphing monthly pub
+library(ggplot2)
+library(reshape2)
+library(scales)
+library(patchwork) # To display 2 charts together
+library(hrbrthemes)
+
+# original plotting on the same graph
+coeff <- 3000
+p_yr2 <- 
+  p_bar+
+  ggplot(plot_year, aes(x=year)) +
+  geom_line(aes(y=nyt_pub_count, color = "New York Times")) + #grey is NYT ;
+  geom_line(aes(y=g_pub_count, color = "The Guardian")) + #yellow is The guardian;
+  geom_line(aes(y=refugees/coeff, color = "Rohingya Refugees")) +
+  scale_y_continuous(name = "Frequency of Articles", sec.axis = sec_axis(~.*1000000/coeff, name = '# of refugees')) +
+   theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=0.5)) + 
+  ggtitle("Figure 1: News Article Frequency, Forced Migration Rates of Rohingya Refugees") +
+  scale_x_date(date_breaks = "year",labels = date_format("%Y"), name = "Year") +
+  geom_vline(aes(xintercept=as.numeric(as.Date("2015-01-01")),
+                 color="2015 Rohingya Refugee Crisis"), linetype=4,size=0.2) +
+    geom_vline(aes(xintercept=as.numeric(as.Date("2017-01-01")),
+                 color="Kofi Annan Report"), linetype=4,size=0.4) +
+    geom_vline(aes(xintercept=as.numeric(as.Date("2018-01-01")),
+                 color="UN Fact Finding Mission"), linetype=4,size=0.2) +
+      scale_color_manual(values=c('dark red','green','#999999','dodgerblue','#E69F00','black'))
+#+
+#    theme(legend.position="right")
+
+ggplotly(p_yr2)
+```
+
+As seen in the graph, there are some trends:
+- The media coverage trends in New York Times and The Guardian are comparable, the number of publications per month increased during similar times throughout the timeline. For example, both news outlets had less than 10 published articles per month between 2010 and April 2015, then in May 2015, both news outlets had a sharp increase in the Rohingya Crisis and then the publication trends decreased to less than 10 articles per month until September 2017, when there was a sharp increase in media coverage. For the most part, The Guardian had higher number of publications per month, compared to New York Times. In September 2017, The Guardian published 67 articles, while New York Times publisehd 36 articles. Between March 2014 to September 2014, NEw York Times publisehd more articles than that of The Guardian, but since January 2015, The Guardian has been publishing more articles than the New York Times. SinceSeptember 2017, the disparity between the number of publications between The Guardian and New York Times has been greater, for example, in May 2020, Guardian published 32 articles while New York Times published 11. 
+```{r}
+#searching for articles where there were peaks:
+guardian_rohingya_news %>%
+ filter(date >= as.Date("2015-05-01") & date <= as.Date("2015-06-01"))
+```
+comparing with refugee trends from UNHCR
+
+```{r}
+#(p_pop+p2)
+
+library(plotly)
+fig1 <- plotly_year
+fig2 <- plotly_pop
+fig <- subplot(fig2, fig1)
+fig %>%
+  layout(title = 'Trends of Rohingya Refugees and Media Coverage', width=900,
+    height=450) 
+```

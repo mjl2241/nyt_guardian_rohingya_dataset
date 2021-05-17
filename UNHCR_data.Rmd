@@ -1,0 +1,92 @@
+---
+title: "Examining forced migration trends during the Rohingya Crisis 2010-2021"
+output: github_document
+editor_options: 
+  chunk_output_type: inline
+author: Michelle Lee
+---
+
+We will use data from UNHCR of refugees who left Myanmar between 2010-2021. 
+LINK : https://www.unhcr.org/refugee-statistics/download/?url=43wgFk
+Details:
+- population figures
+- Year: 2010-2021
+- Country of Origin: Myanmar (MYA)
+
+```{r setup, include=FALSE} 
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(patchwork)
+library(readr)
+library(broom)
+library(dbplyr)
+library(viridis)
+library(reshape2)
+library(plotly)
+library(lubridate)
+
+knitr::opts_chunk$set(
+	echo = TRUE,
+	warning = FALSE,
+	fig.width = 8, 
+  fig.height = 6,
+  out.width = "90%"
+)
+
+options(
+  ggplot2.continuous.colour = "viridis",
+  ggplot2.continuous.fill = "viridis"
+)
+
+scale_colour_discrete = scale_colour_viridis_d
+scale_fill_discrete = scale_fill_viridis_d
+
+theme_set(theme_minimal() + theme(legend.position = "bottom"))
+```
+### About the Data: 
+``` {r importing data}
+library(readr)
+population_data <- read_csv("./population.csv") %>%
+  janitor::clean_names()
+col_keep <- c("year", "refugees_under_unhcr_s_mandate")
+population <-population_data[col_keep]
+population <-
+  population %>%
+  rename(
+    "refugees"=refugees_under_unhcr_s_mandate)
+
+#data cleaning
+population_date <-
+  population %>%
+  mutate(
+    year = as.Date(paste(year, 01, 01, sep = "-")) # end of year
+  ) 
+save(population_date,file="rohingya_news.Rdata")
+```
+
+Graphing using UNHCR data
+```{r plotting refugee trends}
+#graphing monthly pub
+library(ggplot2)
+library(reshape2)
+library(scales)
+
+plot_pop =
+  population %>%
+  mutate(text_label = str_c("Year: ", year, "\nRefugee #: ",refugees)) 
+
+plotly_pop <- 
+plot_pop %>%
+plot_ly(
+    x = ~year, y = ~refugees, type = "scatter", mode = "lines",
+     text = ~text_label, name='Rohingya Refugees') %>%
+  layout (
+    title = "# of Refugees from Myanmmar to Bangladesh betwee 2010-2021",
+  xaxis = list(tickvals = 2010:2021,title = "Year"),
+    yaxis = list(title="# of Refugees"))  %>%
+  add_lines(x =2015.5, line = list(dash="dot", color = 'red', width=0.5, opacity = 0.2), showlegend = FALSE) %>%
+  add_lines(x =2017.8, line = list(dash="dot", color = 'red', width=0.5, opacity = 0.2), showlegend = FALSE) %>%
+  add_lines(x =2018.9, line = list(dash="dot", color = 'red', width=0.5, opacity = 0.2), showlegend = FALSE)
+
+save(plotly_pop,file="rohingya_news.Rdata")
+```
